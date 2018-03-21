@@ -4,84 +4,94 @@
 
 #include "Oscil.h"
 
-typedef enum _wave_form
+#define DEF_NUM_TABLE_CELLS	1024
+
+typedef enum _waveForm
 {
     WF_SIN,
     WF_SQUARE,
     WF_SAW,
     WF_TRIG,
-}wave_form;
+}waveForm;
 
-//extern const int8_t* SIN2048_DATA;
+extern const int8_t SIN2048_DATA[];
+
+typedef int8_t(*wf_func)(unsigned int);
+
+/*
+(int8_t)pgm_read_byte_near(table
+*/
 
 int8_t wf_sin1024(unsigned int pos) {
-	int8_t sin_mod[1024 / 4];
-}
+	int8_t tmp = (int8_t)pgm_read_byte_near(SIN2048_DATA + pos * 2);
+	return( tmp );	// todo pow
+};
 
 int8_t wf_square1024(unsigned int pos) {
+	if (pos < DEF_NUM_TABLE_CELLS / 2){
+		return(-128);
+	}else {
+		return(127);
+	}
 }
 
 int8_t wf_saw1024(unsigned int pos) {
+	return(0);
 }
 
 int8_t wf_trig1024(unsigned int pos) {
+	return(0);
 }
 
 
-typedef uint8_t(*wf_func)(int);
+#define NUM_WG	2
+wf_func	wg[NUM_WG] = { wf_sin1024, wf_square1024 };
+int16_t	wg_param[NUM_WG];
 
-template <uint16_t NUM_TABLE_CELLS>
-class waveTable
+
+void setWgWf(uint8_t op, waveForm wf)
 {
-private:
-	int	param;
-	wave_form wf;
-	wf_func		generator_func;
-
-public:
-	waveTable() {};
-	waveTable(wave_form wf) { setTable(wf); };
-	~waveTable() {};
-
-	void setTable(wave_form wf_);
-	void setParam(int param) {}
-
-	uint8_t read(unsigned int pos) {
-		return generator_func(pos);
+	wf_func	_wf;
+	switch (wf) {
+	case WF_SQUARE: _wf = wf_square1024; break;
+	case WF_SAW:	_wf = wf_saw1024; break;
+	case WF_TRIG:	_wf = wf_trig1024; break;
+	default:		_wf = wf_sin1024; break;
 	};
-};
+	wg[op] = _wf;
+}
 
-template <uint16_t NUM_TABLE_CELLS>
-void waveTable<NUM_TABLE_CELLS>::setTable(wave_form wf_)
+void setWgPar(uint8_t op, int16_t _par)
 {
-	wf = wf_;
-	switch (wf)
-	{
-	case WF_SIN: default:	generator_func = wf_sin1024; break;
-	case WF_SQUARE:	generator_func = wf_square1024; break;
-	case WF_SAW:	generator_func = wf_saw1024; break;
-	case WF_TRIG:	generator_func = wf_trig1024; break;
-	}
-};
+	wg_param[op] = _par;
+}
 
 
-
+// -------------------------------------------------------------------
 template <uint16_t NUM_TABLE_CELLS, uint16_t UPDATE_RATE>
 class calc_osc : public Oscil <NUM_TABLE_CELLS, UPDATE_RATE >
 {
 private:
-	waveTable<NUM_TABLE_CELLS>	*table;
+	uint8_t		n_wg;	// âΩî‘ÇÃî≠êMäÌÇì«ÇﬁÇ©
 
-	unsigned long phase_fractional;
-	volatile unsigned long phase_increment_fractional;
+//	unsigned long phase_fractional;
+//	volatile unsigned long phase_increment_fractional;
 
 public:
-	calc_osc(waveTable<NUM_TABLE_CELLS> &wt) :table(wt) {}
-	calc_osc() {}
+	calc_osc(uint8_t _n) : n_wg(_n) {}
+	calc_osc(): n_wg(0) {}	// null âÒî
 	~calc_osc() {}
 
-	void setTable(waveTable<NUM_TABLE_CELLS> &wt){ table = wt; }
+	void setWG(uint8_t _wg) {
+		n_wg = _wg;
+	}
 
+	inline
+	int8_t next()
+	{
+		this->incrementPhase();
+		return readTable();
+	}
 
 	/** Returns the next sample given a phase modulation value.
 	@param phmod_proportion a phase modulation value given as a proportion of the wave. The
@@ -96,8 +106,8 @@ public:
 	inline
 	int8_t phMod(Q15n16 phmod_proportion)
 	{
-		incrementPhase();
-		return table.read(((phase_fractional + (phmod_proportion * NUM_TABLE_CELLS)) >> OSCIL_F_BITS) & (NUM_TABLE_CELLS - 1));
+		this->incrementPhase();
+		return wg[n_wg](((this->phase_fractional + (phmod_proportion * NUM_TABLE_CELLS)) >> OSCIL_F_BITS) & (NUM_TABLE_CELLS - 1));
 	}
 
 	/** Returns the current sample.
@@ -106,16 +116,17 @@ public:
 	int8_t readTable()
 	{
 #ifdef OSCIL_DITHER_PHASE
-		return table.read(((phase_fractional + ((int)(xorshift96() >> 16))) >> OSCIL_F_BITS) & (NUM_TABLE_CELLS - 1));
+		return wg[n_wg](((phase_fractional + ((int)(xorshift96() >> 16))) >> OSCIL_F_BITS) & (NUM_TABLE_CELLS - 1));
 #else
-		return table.read((phase_fractional >> OSCIL_F_BITS) & (NUM_TABLE_CELLS - 1));
+		return wg[n_wg]((this->phase_fractional >> OSCIL_F_BITS) & (NUM_TABLE_CELLS - 1));
 #endif
 	}
 
 	inline
 	int8_t atIndex(unsigned int index)
 	{
-		return table.read(index & (NUM_TABLE_CELLS - 1));
+		return wg[n_wg](index & (NUM_TABLE_CELLS - 1));
 	}
 };
 
+#undef NUM_TABLE_CELLS

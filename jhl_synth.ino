@@ -57,10 +57,11 @@ int adsr_cache[NUM_OPR];
 bool opr_on_flags[NUM_OPR];
 
 
-#define WAVETABLE_LEN	512
-waveTable <WAVETABLE_LEN> wt[2];
-calc_osc <WAVETABLE_LEN, AUDIO_RATE> opr_calc[NUM_OPR_CALC];
+
+calc_osc <1024, AUDIO_RATE> opr_calc[NUM_OPR_CALC];
 ADSR	<CONTROL_RATE, CONTROL_RATE > adsr_calc[NUM_OPR_CALC];
+int adsr_calc_cache[NUM_OPR_CALC];
+bool opr_calc_on_flags[NUM_OPR_CALC];
 
 
 
@@ -85,39 +86,66 @@ void setup(){
   
   // dummy
   opr[0].setTable(SIN2048_DATA);
+  opr[1].setTable(SAW2048_DATA);
+  opr[2].setTable(TRIANGLE_VALVE_2048_DATA);
+  opr[3].setTable(TRIANGLE_HERMES_2048_DATA);
   opr[0].setFreq(440);
+  opr[1].setFreq(440);
+  opr[2].setFreq(440);
+  opr[3].setFreq(440);
+
+  opr_calc[0].setFreq(500);
+  opr_calc[1].setFreq(500);
+  opr_calc[1].setWG(1);
 }
 
 
 void updateControl(){
   // put changing controls in here
-  setPin13High();
-  for( int i = 0; i<NUM_OPR; i++)
+//  setPin13High();
+
+  for (int i = 0; i<NUM_OPR; i++)
   {
-    if( opr_on_flags[i] ){
-      adsr[i].update();
-      adsr_cache[i] = adsr[i].next();
-    }
+	  if (opr_on_flags[i]) {
+		  adsr[i].update();
+		  adsr_cache[i] = adsr[i].next();
+	  }
   }
-  setPin13Low();
+
+  for (int i = 0; i<NUM_OPR_CALC; i++)
+  {
+	  if (opr_calc_on_flags[i]) {
+		  adsr_calc[i].update();
+		  adsr_calc_cache[i] = adsr_calc[i].next();
+	  }
+  }
+//  setPin13Low();
 }
 
 
 // AUDIO_RATE で呼ばれる
 int updateAudio(){
   setPin13High();
+
   int16_t t = 0;
   int16_t wet = 0;
 
   for(int i=0; i<NUM_OPR; i++ )
   {
     if( opr_on_flags[i] ){
-      t += opr[i].next() * adsr_cache[i];
-      t += pow( t, 1.5f );
+		t += opr[i].next();// *adsr_cache[i];
+//      t += pow( t, 1.5f );
     }
   }
 
-  wet = chorus.next( (int8_t)(t/8), (uint16_t)chorus_time );
+  for (int i = 0; i<NUM_OPR_CALC; i++)
+  {
+	  if (opr_calc_on_flags[i]) {
+		  t += opr_calc[i].next();// *adsr_calc_cache[i];
+	  }
+  }
+  wet = t;
+  //wet = chorus.next( (int8_t)(t/8), (uint16_t)chorus_time );
   setPin13Low();
   
   return (wet);
@@ -129,21 +157,31 @@ void loop(){
   char cmd;
   audioHook(); // required here
 
+  // シリアルからテスト発音
   if (Serial.available() > 0) {
     cmd = Serial.read();
-    if( '0' <= cmd && cmd <= '9' )
-    {
-      // フラグの反転
-      opr_on_flags[cmd-'0'] = !opr_on_flags[cmd-'0'];
+	if ('0' <= cmd ){
+		if( cmd <= '3'){
+			// フラグの反転
+			opr_on_flags[cmd - '0'] = !opr_on_flags[cmd - '0'];
+		}
+		else if (cmd <= '7') {
+			opr_calc_on_flags[cmd - '0'-4] = !opr_calc_on_flags[cmd - '0'-4];
+		}
 
       // フラグ状態の表示
       uint16_t flags = 0;
-      for(int i=0; i<NUM_OPR; i++ )
-      {
-        flags <<= 1;
-        if( opr_on_flags[i] ){ flags |= 1; }
-      }
-      flags |= 1<<15;
+	  for (int i = 0; i<NUM_OPR; i++)
+	  {
+		  flags <<= 1;
+		  if (opr_on_flags[i]) { flags |= 1; }
+	  }
+	  for (int i = 0; i<NUM_OPR_CALC; i++)
+	  {
+		  flags <<= 1;
+		  if (opr_calc_on_flags[i]) { flags |= 1; }
+	  }
+	  flags |= 1<<15;	// ゼロサプレス簡易回避
       Serial.println(flags,BIN );
     }
   }
