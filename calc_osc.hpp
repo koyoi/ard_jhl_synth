@@ -134,15 +134,11 @@ public:
         }
         else
         {
-			setPin13High();
-
 #ifdef OSCIL_DITHER_PHASE
 		return wg_fn[n_wg](((phase_fractional + ((int)(xorshift96() >> 16))) >> OSCIL_F_BITS) & (NUM_TABLE_CELLS - 1));
 #else
 		return wg_fn[n_wg]((this->phase_fractional >> OSCIL_F_BITS) & (NUM_TABLE_CELLS - 1));
 #endif
-		  setPin13Low();
-
 	    }
     }
 

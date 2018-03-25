@@ -158,7 +158,7 @@ void print_note_on_monitor()
 
 void updateControl(){
   // put changing controls in here
-//  setPin13High();
+//	setPin13High();
 
 	for (int i = 0; i < NUM_OPR; i++)
 	{
@@ -179,14 +179,15 @@ void updateControl(){
 
 // AUDIO_RATE で呼ばれる
 int updateAudio(){
-//  setPin13High();
+  setPin13High();
 
   int16_t t = 0;
   int16_t wet = 0;
 
   for(int i=0; i<NUM_OPR; i++ )
   {
-	  if (opr_on_flags[i])
+	  if (adsr[i].playing())
+//	  if( adsr_cache[i] != 0)
 	  {
 		  t += (opr[i].next() * adsr_cache[i])>>8;
 	  }
@@ -214,12 +215,10 @@ void loop(){
 
     if (0 <= cmd_i && cmd_i <= NUM_OPR ){
 		last_ch = cmd_i;
-        // フラグの反転
-		opr_on_flags[cmd_i] ^= 1;
-		if (opr_on_flags[cmd_i])
+		if (!opr_on_flags[cmd_i])
 		{
-			adsr[cmd_i].noteOn();
 			opr_on_flags[cmd_i] = 1;
+			adsr[cmd_i].noteOn();
 		}
 		else
 		{
@@ -250,13 +249,7 @@ void loop(){
 		Serial.println(str_buff);
 	}
 
-	if (cmd == '\n')
-	{
-		print_note_on_monitor();
-	}
+	print_note_on_monitor();
   }
-
-
-
 }
 
