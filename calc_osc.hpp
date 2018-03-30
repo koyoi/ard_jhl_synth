@@ -92,7 +92,7 @@ public:
 	calc_osc(uint8_t _n) : n_wg(_n), type(TYPE_CALC) {}
 	calc_osc(): n_wg(0), type(TYPE_CALC) {}	// null ���
 	~calc_osc() {}
-	/*	遅い気がする
+	/* 関数ポインタ　うーん...
 	int8_t(calc_osc::*phMod)(Q15n16 phmod_proportion);
 	int8_t(calc_osc::*readTable)();
 	int8_t(calc_osc::*atIndex)(unsigned int index);
@@ -112,7 +112,7 @@ public:
 	inline
 	int8_t phMod(Q15n16 phmod_proportion)
 	{
-		if (type == TYPE_WAVETABLE)
+		if (type == TYPE_WAVETABLE)	// うーん…スマートな方法…
 		{
 			Oscil<NUM_TABLE_CELLS, UPDATE_RATE >::phMod(phmod_proportion);
 		}
@@ -134,11 +134,15 @@ public:
         }
         else
         {
+			setPin13High();
+
 #ifdef OSCIL_DITHER_PHASE
 		return wg_fn[n_wg](((phase_fractional + ((int)(xorshift96() >> 16))) >> OSCIL_F_BITS) & (NUM_TABLE_CELLS - 1));
 #else
 		return wg_fn[n_wg]((this->phase_fractional >> OSCIL_F_BITS) & (NUM_TABLE_CELLS - 1));
 #endif
+		  setPin13Low();
+
 	    }
     }
 
@@ -157,13 +161,9 @@ public:
 
 	void setTable(const int8_t * TABLE_NAME)
 	{
-		char buf_printf[32];
-
 		type = TYPE_WAVETABLE;
 		this->table = TABLE_NAME;
 //		phMod = &Oscil<NUM_TABLE_CELLS, UPDATE_RATE >::phMod;
-		sprintf(buf_printf, "opr[%d]:table(%d)", this, TABLE_NAME);
-		Serial.println(buf_printf);
 	}
 
 	void setWG(uint8_t _wg) {
