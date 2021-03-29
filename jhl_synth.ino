@@ -29,13 +29,19 @@
 	→スロットにチャンネルをセット。該当ノートでon
 	・プログラムチェンジで参照音色を更新
 	*/
+#include <pitchToNote.h>
+#include <pitchToFrequency.h>
+#include <MIDIUSB.h>
+#include <frequencyToNote.h>
 #include <MIDI.h>
 
 #include <MozziGuts.h>
 #include <Mozzi_Utils.h>
 #include <ADSR.h>
+/*
 #include <AudioDelay.h>
 #include <AudioDelayFeedback.h>
+*/
 #include <LowPassFilter.h>
 #include <mozzi_midi.h>
 //#include <PDResonant.h>
@@ -62,8 +68,9 @@
 
 // non pwm	2,4,7,8,11,12,13
 
-//#define SERIAL_IS_MIDI
 
+//#define SERIAL_IS_MIDI
+//bool chorus_on;
 
 
 // use #define for CONTROL_RATE, not a constant
@@ -110,11 +117,14 @@ typedef struct _voice
 
 voice	slot[NUM_OPR];
 
+uint16_t adcData[6];
 
-#define ADFB_LEN	64
+/*
+#define ADFB_LEN	128
 uint8_t chorus_time = ADFB_LEN;
-AudioDelayFeedback<ADFB_LEN, ALLPASS> chorus(ADFB_LEN,100); // block, fb level
-
+AudioDelayFeedback<ADFB_LEN, ALLPASS> chorus(ADFB_LEN, 90); // block, fb level
+//AudioDelay<ADFB_LEN, int8_t> chorus(ADFB_LEN); // block
+*/
 
 const int8_t* waveTables[] = { SIN2048_DATA,
 					 TRIANGLE_VALVE_2048_DATA, TRIANGLE_VALVE_2_2048_DATA,
@@ -232,6 +242,8 @@ void setup(){
 	pinMode(SW2, INPUT_PULLUP); 
 	pinMode(BTN1, INPUT_PULLUP); 
 	pinMode(BTN2, INPUT_PULLUP); 
+	adcDisconnectAllDigitalIns();
+
 
 #ifdef SERIAL_IS_MIDI
   MIDI_CREATE_DEFAULT_INSTANCE();
@@ -316,6 +328,9 @@ void updateControl(){
 			}
 		}
 	}
+	for (int i = 0; i < 6; i++) {
+		adcData[i] = mozziAnalogRead(i);
+	}
 //  setPin13Low();
 }
 
@@ -335,10 +350,21 @@ int updateAudio() {
 	}
 
 	wet = t;
-	//wet = chorus.next( (int8_t)(t/8), (uint16_t)chorus_time );
+	/*
+	if (chorus_on) {
+		wet += chorus.next(t>>3, (uint16_t)ADFB_LEN);
+	}
+	*/
 	setPin13Low();
 
 	return (wet);
+}
+
+static void playBasicCode(uint8_t last_ch, uint8_t base, uint8_t minor = 0)
+{
+	HandleNoteOn(last_ch, base, 255);
+	HandleNoteOn(last_ch, base + 4 - minor, 255);
+	HandleNoteOn(last_ch, base + 7, 255);
 }
 
 
@@ -391,18 +417,61 @@ void loop(){
 	}
 */
 	switch (cmd){
+		uint8_t base;
 	case 'q':
+		last_ch = 0;
 		HandleNoteOn(0, random(48, 83), 255);
 		break;
 	case 'w':
+		last_ch = 1;
 		HandleNoteOn(1, random(48, 83), 255);
 		break;
 	case 'e':
+		last_ch = 2;
 		HandleNoteOn(2, random(48, 83), 255);
 		break;
+		/*
+	case 'c':
+		chorus_on ^= 1;
+		if (chorus_on)
+		{
+			Serial.println("chorus is on");
+		}
+		else
+		{
+			Serial.println("chorus is off");
+		}
+		break;
+		*/
+	case 'z':	HandleNoteOn(last_ch, 60, 255);	break;	// c
+	case 'x':	HandleNoteOn(last_ch, 62, 255);	break;	// d
+	case 'c':	HandleNoteOn(last_ch, 64, 255);	break;	// e
+	case 'v':	HandleNoteOn(last_ch, 65, 255);	break;	// f
+	case 'b':	HandleNoteOn(last_ch, 67, 255);	break;	// g
+	case 'n':	HandleNoteOn(last_ch, 69, 255);	break;	// a
+	case 'm':	HandleNoteOn(last_ch, 71, 255);	break;	// b
+
+	case 'Z':	playBasicCode(last_ch, 60);		break;	// C
+	case 'X':	playBasicCode(last_ch, 62,1);	break;	// Dm
+	case 'C':	playBasicCode(last_ch, 64,1);	break;	// Em
+	case 'V':	playBasicCode(last_ch, 65);		break;	// F	
+	case 'B':	playBasicCode(last_ch, 67);		break;	// G
+	case 'N':	playBasicCode(last_ch, 69,1);	break;	// Am
+	case 'M':	playBasicCode(last_ch, 71,1);	break;	// Bm
 	}
 
 	print_note_on_monitor();
+  }
+
+  {
+	midiEventPacket_t rx;
+	rx = MidiUSB.read();
+	if (rx.header != 0) {
+		//send back the received MIDI command
+//		MidiUSB.sendMIDI(rx);
+//		MidiUSB.flush();
+		Serial.println("midi rcv");
+	}
   }
 }
 
